@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.coverage
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# GRASS Module.make build tree
+OBJ.*/
+build/
+*.o
+*.so
+
+# Standalone binary (DEBIAN_BUILD=1)
+i.hyper.cropname
+!i.hyper.cropname.py
+!i.hyper.cropname.html
+!i.hyper.cropname.md
+
+# Generated outputs
+*_legend.csv
+*.wl.json
+
+# References (PDFs — large, not source code)
+*.pdf
+*.docx
+*.zip
