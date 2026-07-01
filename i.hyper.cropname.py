@@ -292,9 +292,29 @@ def load_wavelengths(raster3d: str) -> list[float] | None:
     """
     Return band-centre wavelengths (nm) for the 3D raster.
 
-    Tries: (1) .wl.json sidecar  (2) gs.raster3d_info / r3.info history.
-    Returns None if no wavelength metadata found.
+    Tries: (1) i.hyper.import's hyper.json sidecar  (2) .wl.json sidecar
+    (3) gs.raster3d_info / r3.info history. Returns None if no wavelength
+    metadata found.
     """
+    # Try i.hyper.import's grid3/<map>/hyper.json sidecar (HyperMetadata) —
+    # the current i.hyper.import writes wavelengths there, not to r3.support
+    # history nor to a .wl.json sidecar.
+    name, mapset = (raster3d.split('@', 1) if '@' in raster3d
+                     else (raster3d, None))
+    try:
+        env = gs.gisenv()
+        mapset = mapset or env['MAPSET']
+        hj_path = os.path.join(env['GISDBASE'], env['LOCATION_NAME'], mapset,
+                               'grid3', name, 'hyper.json')
+        if os.path.isfile(hj_path):
+            with open(hj_path) as f:
+                data = json.load(f)
+            wl = (data.get('bands') or {}).get('wavelength')
+            if wl:
+                return [float(w) for w in wl]
+    except Exception:
+        pass
+
     # Try .wl.json sidecar (written by i.hyper.atcorr / ras3d_write)
     for sfx in ('', '.tif', '.tiff', '.h5', '.hdf5'):
         base = raster3d.removesuffix(sfx) if raster3d.endswith(sfx) else raster3d
