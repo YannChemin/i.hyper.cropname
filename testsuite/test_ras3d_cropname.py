@@ -13,6 +13,7 @@ from test_ras3d_common import (
     WYVERN_PATH, TANAGER_PATH,
     skip_without_ras3d, skip_without_wyvern, skip_without_tanager,
     open_cube_checked, assert_band_valid, install_ras3d_shim, make_wl_sidecar,
+    remove_wl_sidecar,
 )
 
 MODULE_DIR = os.path.join(os.path.dirname(__file__), '..')
@@ -141,7 +142,7 @@ def test_load_wavelengths_from_sidecar():
     wl = m.load_wavelengths(WYVERN_PATH)
     assert wl is not None
     assert len(wl) == r['depths']
-    os.unlink(sidecar)
+    remove_wl_sidecar(sidecar)
 
 
 @skip_without_ras3d
@@ -223,7 +224,7 @@ def test_sam_end_to_end_wyvern(tmp_path):
         f"threshold=pi left {subset.shape[0] - counts[2]} pixels "
         "unclassified; every spectral angle is at most pi")
 
-    os.unlink(sidecar)
+    remove_wl_sidecar(sidecar)
 
 
 @skip_without_ras3d
