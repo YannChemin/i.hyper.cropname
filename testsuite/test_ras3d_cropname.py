@@ -170,15 +170,58 @@ def test_sam_end_to_end_wyvern(tmp_path):
     B, R, C = cube.shape
     pixels = cube.reshape(B, -1).T
 
-    valid_pix = np.isfinite(pixels).all(axis=1)
-    cls, conf = m.classify_sam(pixels[valid_pix], lib_res[:, valid[valid]], threshold=0.15)
+    # Mask exactly as the module's own pipeline does (main(), the
+    # valid_pix line): np.isfinite() alone keeps Wyvern's -9999 nodata
+    # sentinel, which is finite and would be fed to the matcher as if it
+    # were reflectance. On this cube that is 18.5 M of 47 M pixels.
+    refs = lib_res[:, valid[valid]]
+    finite_pix = np.isfinite(pixels).all(axis=1)
+    valid_pix = finite_pix & (pixels >= 0).all(axis=1)
+    assert valid_pix.sum() < finite_pix.sum(), (
+        "the >= 0 clause removed nothing, so this cube no longer carries a "
+        "negative nodata sentinel and the mask under test is not being "
+        "exercised")
 
-    assert cls.shape[0] == valid_pix.sum()
-    assert conf.shape[0] == valid_pix.sum()
+    cls, conf = m.classify_sam(pixels[valid_pix], refs, threshold=0.15)
+
+    n_valid = int(valid_pix.sum())
+    n_crops = refs.shape[0]
+    assert cls.shape[0] == n_valid
+    assert conf.shape[0] == n_valid
     assert (conf >= 0).all() and (conf <= 1).all()
-    # At least some pixels should be classified
-    classified = (cls > 0).sum()
-    assert classified > 0, f"Expected >0 classified pixels, got {classified}"
+    # 0 means unclassified; anything else is a 1-based library index.
+    assert cls.min() >= 0 and cls.max() <= n_crops
+
+    # Deliberately NOT asserted: that some pixels classify at 0.15 rad.
+    # make_wl_sidecar() above writes synthetic band centres (400 nm, 23.5 nm
+    # apart), so the crop library is resampled onto wavelengths this sensor
+    # does not have and there is no physical reason for any pixel to fall
+    # within 0.15 rad of a crop. Measured on this cube the smallest angle to
+    # any library member is 0.343 rad, so such an assertion only ever passed
+    # by accident, on nodata-contaminated spectra. What is checked instead is
+    # that the classifier assigns classes whenever the threshold admits them,
+    # and that the threshold is honoured monotonically.
+    rng = np.random.default_rng(0)
+    sample = rng.choice(n_valid, size=min(200_000, n_valid), replace=False)
+    # Index once through the valid positions: pixels[valid_pix][sample] would
+    # materialise the whole masked cube again before subsetting it, which is
+    # several GB on this scene.
+    subset = pixels[np.flatnonzero(valid_pix)[sample]]
+
+    counts = []
+    for thr in (0.15, 0.5, np.pi):
+        c, cf = m.classify_sam(subset, refs, threshold=thr)
+        assert c.shape[0] == subset.shape[0]
+        assert (cf >= 0).all() and (cf <= 1).all()
+        assert c.min() >= 0 and c.max() <= n_crops
+        counts.append(int((c > 0).sum()))
+
+    assert counts[0] <= counts[1] <= counts[2], (
+        f"a looser SAM threshold classified fewer pixels: {counts}")
+    # Every angle is <= pi, so a threshold of pi must classify everything.
+    assert counts[2] == subset.shape[0], (
+        f"threshold=pi left {subset.shape[0] - counts[2]} pixels "
+        "unclassified; every spectral angle is at most pi")
 
     os.unlink(sidecar)
 
