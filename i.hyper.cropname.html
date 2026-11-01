@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>i.hyper.cropname - GRASS GIS manual</title>
+<meta charset="utf-8">
+</head>
+<body>
+
+<h2>DESCRIPTION</h2>
+<p><em>i.hyper.cropname</em> classifies a hyperspectral cube and names
+the agricultural crop type of each pixel, writing a 2D class-code raster
+and, optionally, a per-pixel confidence raster.</p>
+<p><strong>input</strong> is a 3D raster of bottom-of-atmosphere
+reflectance as a fraction in [0, 1] — the kind of cube
+<em>i.hyper.atcorr</em> produces. The z axis is the spectral axis, and
+the band centres are read from the cube so that only the wavelengths
+between <strong>min_wl</strong> and <strong>max_wl</strong> are
+used.</p>
+<p>Classification compares each pixel spectrum against a
+<strong>spectral library</strong> of reference crop spectra. The
+built-in library,
+<code>data/spectral_library_ghisaconus_approx.csv</code>, holds
+approximate mean spectra for twelve crops; <strong>library</strong>
+replaces it with your own CSV, and <strong>crops</strong> restricts the
+match to a subset of its entries.</p>
+<h3>Methods</h3>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th><strong>method</strong></th>
+<th>Typical accuracy</th>
+<th>Training</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>sam</code></td>
+<td>80-90 %</td>
+<td>not needed</td>
+<td>Spectral Angle Mapper; physics-based, always available</td>
+</tr>
+<tr class="even">
+<td><code>svm</code></td>
+<td>96-99 %</td>
+<td><strong>required</strong></td>
+<td>RBF-kernel support vector machine; the most accurate</td>
+</tr>
+<tr class="odd">
+<td><code>rf</code></td>
+<td>92-95 %</td>
+<td><strong>required</strong></td>
+<td>Random forest; robust to noise</td>
+</tr>
+<tr class="even">
+<td><code>lda</code></td>
+<td>about 85 %</td>
+<td><strong>required</strong></td>
+<td>Linear discriminant analysis; fast baseline</td>
+</tr>
+</tbody>
+</table>
+<p><code>sam</code> is the default and needs no training data: it
+measures the angle between the pixel spectrum and each library spectrum,
+assigns the closest crop, and leaves the pixel unclassified (class 0)
+where even the best angle exceeds <strong>threshold</strong> radians.
+The <strong>-n</strong> flag normalises spectra to unit length
+first.</p>
+<p>The other three methods are supervised and need
+<strong>train</strong>, a 2D raster of class codes matching the
+library’s <code>class_id</code> values. They require
+<code>scikit-learn</code>; <em>i.hyper.cropname</em> fails with a clear
+message where it is missing, rather than silently falling back to
+<code>sam</code>.</p>
+<h3>Optimal Hyperspectral
+Narrowbands</h3>
+<p>With <strong>n_ohnb</strong> greater than 0 the module selects that
+many most discriminating bands by PCA factor loading before classifying,
+following Aneece &amp; Thenkabail (2018), who reduced 242 Hyperion bands
+to 30 for five-crop classification with little accuracy loss.
+<strong>n_ohnb=0</strong>, the default, uses every band in the
+<strong>min_wl</strong>-<strong>max_wl</strong> window.</p>
+<h3>Spectral library format</h3>
+<p>The library is a CSV whose first three columns are <code>name</code>,
+<code>source</code> and <code>class_id</code>, followed by one
+<code>wl_&lt;nm&gt;</code> column per band:</p>
+<pre class="text"><code>name,source,class_id,wl_447,wl_457,wl_467,...
+corn,GHISACONUS_approx,1,0.0412,0.0438,0.0455,...</code></pre>
+<p>Lines beginning with <code>#</code> are comments. The library’s own
+wavelengths need not match the cube’s; the reference spectra are
+resampled onto the cube’s band centres.</p>
+<p>The built-in library covers twelve crops:</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th><code>class_id</code></th>
+<th>Crop</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1-5</td>
+<td>corn, soybean, winter_wheat, cotton, rice</td>
+<td>GHISACONUS (Aneece &amp; Thenkabail 2018)</td>
+</tr>
+<tr class="even">
+<td>6-9</td>
+<td>alfalfa, almonds, grapes, pistachios</td>
+<td>DESIS/PRISMA (Aneece et al. 2024)</td>
+</tr>
+<tr class="odd">
+<td>10-12</td>
+<td>wheat_pakistan, sugarcane_pakistan, maize_pakistan</td>
+<td>CROPSPECPK (Raza et al. 2026)</td>
+</tr>
+</tbody>
+</table>
+<p>These are <strong>approximate</strong> spectra compiled from the
+literature, meant for demonstration. For real work, replace them with
+calibrated field measurements or the full GHISACONUS library from <a
+href="https://www.usgs.gov/programs/national-land-imaging-program/global-hyperspectral-imaging-spectral-library-agricultural">USGS</a>.</p>
+<h3>Outputs</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Output</th>
+<th>Type</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>output</strong></td>
+<td>2D raster, integer</td>
+<td>crop class code; 0 where no library spectrum matched</td>
+</tr>
+<tr class="even">
+<td><strong>confidence</strong></td>
+<td>2D raster, float</td>
+<td>match confidence in [0, 1]</td>
+</tr>
+<tr class="odd">
+<td><code>&lt;output&gt;_legend.csv</code></td>
+<td>CSV</td>
+<td><code>class_id</code> to crop-name mapping, written beside the
+output</td>
+</tr>
+</tbody>
+</table>
+<p>The <strong>-p</strong> flag prints the band and library statistics
+that classification would use — band count, the wavelength window
+actually matched, and which library entries were selected — and then
+exits without writing any raster. It is the quickest way to check that a
+cube’s spectral axis and a library agree before committing to a full
+run.</p>
+<h2>NOTES</h2>
+<p>The module reads the band centres from the cube’s own metadata, as
+<em>i.hyper.import</em> writes them. <strong>Where a cube carries no
+wavelength metadata, the module warns and then assumes 1 nm spacing
+starting at min_wl.</strong> That assumption is almost never right for a
+real sensor — EMIT and PRISMA are near 7.4 nm and 10 nm — and it
+silently shifts every band against the library, so the resulting crop
+map can be confidently wrong. Check for
+<code>No wavelength metadata found</code> in the output, and if it
+appears, fix the cube’s metadata rather than trusting the result. The
+<strong>-p</strong> flag reports the cube and library wavelength ranges
+it would use, so it catches this before any raster is written.</p>
+<p><code>sam</code> runs with nothing beyond <code>numpy</code>.
+<code>svm</code>, <code>rf</code> and <code>lda</code> additionally need
+<code>scikit-learn</code>, imported only after the parser has run, so
+<code>--help</code> and <strong>-p</strong> work without it.</p>
+<p>Besides GRASS, the module runs standalone on GeoTIFF and HDF5 cubes
+through <a href="https://github.com/YannChemin/libras3d">libras3d</a>,
+built with <code>DEBIAN_BUILD=1</code>, with no GRASS installation. In
+that mode <code>RAS3D_PATH</code> and <code>RAS3D_OUTDIR</code> locate
+the input scenes and the output directory.</p>
+<h2>EXAMPLES</h2>
+<h3>Spectral Angle
+Mapper with the built-in library</h3>
+<pre class="sh"><code>i.hyper.cropname input=hyperspectral_cube@PERMANENT \
+    output=crop_map confidence=crop_conf \
+    method=sam threshold=0.08</code></pre>
+<h3>Check the
+cube against the library before classifying</h3>
+<pre class="sh"><code>i.hyper.cropname -p input=hyperspectral_cube output=dummy</code></pre>
+<h3>Supervised
+classification with training samples</h3>
+<pre class="sh"><code>i.hyper.cropname input=hyperspectral_cube@PERMANENT \
+    output=crop_map_svm train=training_samples method=svm</code></pre>
+<h3>Restrict the
+library to a few irrigated crops</h3>
+<pre class="sh"><code>i.hyper.cropname input=cube output=irr_crops \
+    crops=alfalfa,corn,cotton,grapes method=sam</code></pre>
+<h3
+id="reduce-to-30-optimal-narrowbands-over-the-vnir-swir-window">Reduce
+to 30 optimal narrowbands over the VNIR-SWIR window</h3>
+<pre class="sh"><code>i.hyper.cropname input=cube output=crop_map \
+    n_ohnb=30 min_wl=450 max_wl=2400</code></pre>
+<h3>Standalone, outside GRASS</h3>
+<pre class="sh"><code>export RAS3D_PATH=/data/scenes
+export RAS3D_OUTDIR=/data/output
+i.hyper.cropname input=/data/scenes/wyvern.tiff \
+    output=wyvern_crops confidence=wyvern_conf \
+    method=sam threshold=0.08</code></pre>
+<h2>SEE ALSO</h2>
+<p><em><a href="i.hyper.atcorr.html">i.hyper.atcorr</a>, <a
+href="i.hyper.endmembers.html">i.hyper.endmembers</a>, <a
+href="i.hyper.lib_ossl.html">i.hyper.lib_ossl</a>, <a
+href="i.hyper.speclookup.html">i.hyper.speclookup</a>, <a
+href="i.hyper.spectroscopy.html">i.hyper.spectroscopy</a>, <a
+href="r3.what.html">r3.what</a></em></p>
+<p>GHISACONUS spectral library: <a
+href="https://www.usgs.gov/programs/national-land-imaging-program/global-hyperspectral-imaging-spectral-library-agricultural">USGS
+Global Hyperspectral Imaging Spectral Library of Agricultural
+Crops</a></p>
+<h2>REFERENCES</h2>
+<p>Aneece, I. &amp; Thenkabail, P.S. (2018). <em>Accuracies achieved in
+classifying five leading world crop types and their growth stages using
+optimal Earth observing-1 Hyperion hyperspectral narrowbands on Google
+Earth Engine.</em> Remote Sensing 10, 2027. <a
+href="https://doi.org/10.3390/rs10122027">doi:10.3390/rs10122027</a></p>
+<p>Aneece, I. &amp; Thenkabail, P.S. (2021). <em>Classifying crop types
+using two generations of hyperspectral sensors (Hyperion and DESIS) with
+machine learning on the cloud.</em> Remote Sensing 13, 4704. <a
+href="https://doi.org/10.3390/rs13224704">doi:10.3390/rs13224704</a></p>
+<p>Aneece, I., Thenkabail, P.S., McCormick, R., Alifu, H., Foley, D.,
+Oliphant, A.J., Teluguntla, P. (2024). <em>Machine learning and
+new-generation spaceborne hyperspectral data advance crop type
+mapping.</em> Photogrammetric Engineering &amp; Remote Sensing 90(11),
+687-698.</p>
+<p>Basener, B. (2022). <em>Classifying crop types using Gaussian
+Bayesian models and neural networks on GHISACONUS USGS data.</em>
+arXiv:2207.11228.</p>
+<p>Raza, D. et al. (2026). <em>Development of a spectral library of
+crops (CROPSPECPK).</em> BMC Plant Biology 26:561.</p>
+<h2>AUTHORS</h2>
+<p>Yann Chemin</p>
+
+</body>
+</html>
